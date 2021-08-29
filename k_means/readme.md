@@ -19,8 +19,11 @@ from kmeans import kmeans
 # creating object
 kmeans_test = kmeans(n_clusters = 3)
 
-# get corresponding centroids
+# fit data points
 kmeans_test.centroids()
+
+# get corresponding centroids
+kmeans_test.fit(data)
 
 # plot the cluster
 kmeans_test.plot_cluster()
