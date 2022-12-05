@@ -4,6 +4,7 @@ from control_functions import *
 
 MemSize = 1000 # memory size, in reality, the memory size should be 2^32, but for this lab, for the space resaon, we keep it as this large number, but the memory is still 32-bit addressable.
 
+
 class InsMem(object):
     def __init__(self, name, ioDir):
         self.id = name
@@ -16,6 +17,7 @@ class InsMem(object):
         #return 32 bit hex val
         print(ReadAddress, [i for idx,i in enumerate(self.IMem) if (idx >= ReadAddress) and (idx < ReadAddress + 4)])
         return "".join([i for idx,i in enumerate(self.IMem) if (idx >= ReadAddress) and (idx < ReadAddress + 4)])
+
 
 class DataMem(object):
     def __init__(self, name, ioDir):
@@ -49,11 +51,11 @@ class DataMem(object):
         fill_remain = "0"
         self.DMem += self.divideString(WriteData, bits_split, fill_remain)
 
-
     def outputDataMem(self):
         resPath = self.ioDir + "/" + self.id + "_DMEMResult.txt"
         with open(resPath, "w") as rp:
             rp.writelines([str(data) + "\n" for data in self.DMem])
+
 
 class RegisterFile(object):
     def __init__(self, ioDir):
@@ -71,12 +73,13 @@ class RegisterFile(object):
 
 
     def outputRF(self, cycle):
-        op = ["-"*70+"\n", "State of RF after executing cycle:" + str(cycle) + "\n"]
-        op.extend([str(val)+"\n" for val in self.Registers])
+        op = ["State of RF after executing cycle:\t" + str(cycle) + "\n"]
+        op.extend([str(val) + "\n" for val in self.Registers])
         if(cycle == 0): perm = "w"
         else: perm = "a"
         with open(self.outputFile, perm) as file:
             file.writelines(op)
+
 
 class State(object):
     def __init__(self):
@@ -88,6 +91,7 @@ class State(object):
                    "WrDMem": 0, "WBEnable": 0}
         self.WB = {"nop": False, "Wrt_data": 0, "Rs": 0, "Rt": 0, "DestReg": 0, "wrt_enable": 0}
 
+
 class Core(object):
     def __init__(self, ioDir, imem, dmem):
         self.myRF = RegisterFile(ioDir)
@@ -98,6 +102,7 @@ class Core(object):
         self.nextState = State()
         self.ext_imem = imem
         self.ext_dmem = dmem
+
 
 class SingleStageCore(Core):
     def __init__(self, ioDir, imem, dmem):
@@ -149,17 +154,23 @@ class SingleStageCore(Core):
         self.cycle += 1
 
     def printState(self, state, cycle):
-        printstate = ["-"*70+"\n", "State after executing cycle: " + str(cycle) + "\n"]
-        printstate.extend(["IF." + key + ": " + str(val) + "\n" for key, val in state.IF.items()])
-        printstate.extend(["ID." + key + ": " + str(val) + "\n" for key, val in state.ID.items()])
-        printstate.extend(["EX." + key + ": " + str(val) + "\n" for key, val in state.EX.items()])
-        printstate.extend(["MEM." + key + ": " + str(val) + "\n" for key, val in state.MEM.items()])
-        printstate.extend(["WB." + key + ": " + str(val) + "\n" for key, val in state.WB.items()])
+        printstate = ["State after executing cycle:\t" + str(cycle) + "\n"]
+        printstate.append("IF.PC:\t" + str(state.IF["PC"]) + "\n")
+        printstate.append("IF.nop:\t" + str(int(state.IF["nop"])) + "\n")
+
+    # def printState(self, state, cycle):
+    #     printstate = ["State after executing cycle:\t" + str(cycle) + "\n"]
+    #     printstate.extend(["IF." + key + ":\t" + str(val) + "\n" for key, val in state.IF.items()])
+    #     printstate.extend(["ID." + key + ":\t" + str(val) + "\n" for key, val in state.ID.items()])
+    #     printstate.extend(["EX." + key + ":\t" + str(val) + "\n" for key, val in state.EX.items()])
+    #     printstate.extend(["MEM." + key + ":\t" + str(val) + "\n" for key, val in state.MEM.items()])
+    #     printstate.extend(["WB." + key + ":\t" + str(val) + "\n" for key, val in state.WB.items()])
 
         if(cycle == 0): perm = "w"
         else: perm = "a"
         with open(self.opFilePath, perm) as wf:
             wf.writelines(printstate)
+
 
 class FiveStageCore(Core):
     def __init__(self, ioDir, imem, dmem):
@@ -210,7 +221,7 @@ class FiveStageCore(Core):
         self.cycle += 1
 
     def printState(self, state, cycle):
-        printstate = ["-"*70+"\n", "State after executing cycle: " + str(cycle) + "\n"]
+        printstate = ["\n", "State after executing cycle: " + str(cycle) + "\n"]
         printstate.extend(["IF." + key + ": " + str(val) + "\n" for key, val in state.IF.items()])
         printstate.extend(["ID." + key + ": " + str(val) + "\n" for key, val in state.ID.items()])
         printstate.extend(["EX." + key + ": " + str(val) + "\n" for key, val in state.EX.items()])
@@ -221,6 +232,7 @@ class FiveStageCore(Core):
         else: perm = "a"
         with open(self.opFilePath, perm) as wf:
             wf.writelines(printstate)
+
 
 if __name__ == "__main__":
 
@@ -243,8 +255,8 @@ if __name__ == "__main__":
     # fsCore = FiveStageCore(ioDir, imem, dmem_fs)
 
     count = 0
-    while(True):
-        print('-------------------------------------')
+    while True:
+        # print('-------------------------------------')
         if not ssCore.halted:
             ssCore.step()
             count = 0
