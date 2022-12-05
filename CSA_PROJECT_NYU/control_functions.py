@@ -4,6 +4,24 @@ def twos_comp(val, bits):
         val = val - (1 << bits)
     return val
 
+
+def generate_bitstring(s):
+    #TODO: rm, this is for debugging the error
+    if '-' in s:
+        return s
+    return s[-1: -33: -1][::-1]
+
+
+def twos_comp_str(s):
+    s = list(s)
+    for i in range(len(s)):
+        if s[i] == '0':
+            s[i] = '1'
+        else:
+            s[i] = '0'
+    return '{:032b}'.format(int(''.join(s), 2) + 1)
+
+
 def r_type(s, state, register_file, memory):
 
     rd = s[-12:-7]
@@ -43,6 +61,7 @@ def r_type(s, state, register_file, memory):
     state.EX["mux_out2"] = state.EX["Operand2"]
     state.EX["RdDMem"] = 1
     state.EX["WrDMem"] = 0
+
 
 def i_type(s, state, register_file, memory):
     opcode = s[-7:]
@@ -87,6 +106,7 @@ def i_type(s, state, register_file, memory):
         print("ANDI")
         state.EX["AluControlInput"] = "0000"
 
+
 def s_type(s, state, register_file, memory):
 
     imm1 = s[-12:-7]
@@ -126,6 +146,7 @@ def b_type(s, state, register_file, memory):
     rs2 = s[-25:-20]
     imm2 = s[:-25]
 
+
 def instruction_decode(s, state, register_file, memory):
     # R Type 0110011
     if s[-7:] == "0110011":
@@ -154,17 +175,18 @@ def instruction_decode(s, state, register_file, memory):
         state.EX["RdDMem"] = 0
         state.IF["nop"] = True
 
+
 def instruction_exec(state, alucontrol, op1, op2, DestReg):
     print(op1,op2)
     state.MEM["DestReg"] = DestReg
     if alucontrol == "0110":
         print("SUB")
-        state.MEM["ALUresult"] = '{0:32b}'.format(int(op1,2) - int(op2,2))
+        state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(op1,2) + int(twos_comp_str(op2), 2)))
 
     elif alucontrol == "0010":
         print("ADD..............")
         # print(int(op1,2) + int(op2,2), '{0:032b}'.format(int(op1,2) + int(op2,2)))
-        state.MEM["ALUresult"] = '{0:32b}'.format(int(op1,2) + int(op2,2))
+        state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(op1,2) + int(op2,2)))
 
     elif alucontrol == "0000":
         print("AND")
@@ -173,7 +195,7 @@ def instruction_exec(state, alucontrol, op1, op2, DestReg):
         for i in range(len(op1)):
             res = res + str(int(op1[i]) & int(op2[i]))
         print(res)
-        state.MEM["ALUresult"] = '{0:32b}'.format(int(res,2))
+        state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(res,2)))
 
     elif alucontrol == "0001":
         print("OR")
@@ -181,12 +203,13 @@ def instruction_exec(state, alucontrol, op1, op2, DestReg):
         for i in range(len(op1)):
             res = res + str(int(op1[i]) or int(op2[i]))
 
-        state.MEM["ALUresult"] = '{0:32b}'.format(int(res,2))
+        state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(res,2)))
 
     elif alucontrol == "0011":
         print("XOR")
-        state.MEM["ALUresult"] = '{0:32b}'.format(int(op1,2) ^ int(op2,2))
-        
+        state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(op1,2) ^ int(op2,2)))
+
+
 def instruction_mem(state, RdDMem, WrDMem, memory, ALUresult, DestReg, WBEnable):
     print(RdDMem, WrDMem, WBEnable)
     if RdDMem == 1 and WBEnable == 1:
@@ -205,6 +228,7 @@ def instruction_mem(state, RdDMem, WrDMem, memory, ALUresult, DestReg, WBEnable)
         print("Write to memory", ALUresult, DestReg)
         memory.writeDataMem(DestReg, ALUresult)
         state.WB["wrt_enable"] = 0
+
 
 def write_nack(DestReg, Wrt_data, wrt_enable, register_file):
     if wrt_enable:
