@@ -43,8 +43,33 @@ def r_type(s, state, register_file, memory):
     rs2 = s[-25:-20]
     func7 = s[:-25]
 
-    state.EX["Operand1"] = register_file.readRF(rs1)
-    state.EX["Operand2"] = register_file.readRF(rs2)
+    #-------------------------------Forwarding logic starts-----------------------------------
+    # Forward for all instructions except for load value
+    if (rs1 == state.MEM["DestReg"]) and (state.MEM["RdDMem"] != 1 or state.MEM["WBEnable"] != 1):
+        state.EX["Operand1"] = state.MEM["ALUresult"]
+    elif (rs1 == state.WB["DestReg"]) and state.WB["wrt_enable"] == 1:
+        # in case of load value take from write back stage
+        state.EX["Operand1"] = state.WB["Wrt_data"]
+    elif (rs1 == state.MEM["DestReg"]) and state.MEM["RdDMem"] == 1 and state.MEM["WBEnable"] == 1:
+        state.EX["nop"] = 1
+        return
+    else:
+        state.EX["Operand1"] = register_file.readRF(rs1)
+    
+    if rs2 == state.MEM["DestReg"] and (state.MEM["RdDMem"] != 1 or state.MEM["WBEnable"] != 1):
+        state.EX["Operand2"] = state.MEM["ALUresult"]
+    elif (rs2 == state.WB["DestReg"]) and state.WB["wrt_enable"] == 1:
+        # in case of load value take from write back stage
+        state.EX["Operand2"] = state.WB["Wrt_data"]
+    elif (rs2 == state.MEM["DestReg"]) and state.MEM["RdDMem"] == 1 and state.MEM["WBEnable"] == 1:
+        state.EX["nop"] = 1
+        return
+    else:
+        state.EX["Operand2"] = register_file.readRF(rs2)
+    
+    #-------------------------------Forwarding logic ends-----------------------------------
+
+
     print(register_file.Registers)
     print(rs1,rs2)
     print(state.EX["Operand1"], state.EX["Operand2"])
