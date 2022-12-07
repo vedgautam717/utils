@@ -70,9 +70,9 @@ def r_type(s, state, register_file, memory):
     #-------------------------------Forwarding logic ends-----------------------------------
 
 
-    print(register_file.Registers)
-    print(rs1,rs2)
-    print(state.EX["Operand1"], state.EX["Operand2"])
+    # print(register_file.Registers)
+    # print(rs1,rs2)
+    # print(state.EX["Operand1"], state.EX["Operand2"])
     state.EX["DestReg"] = rd
 
     if func3 == "000" and func7 == "0100000":
@@ -108,7 +108,22 @@ def i_type(s, state, register_file, memory):
     rs1 = s[-20:-15]
     imm = s[:-20]
 
-    state.EX["Operand1"] = register_file.readRF(rs1)
+    #-------------------------------Forwarding logic starts-----------------------------------
+    # Forward for all instructions except for load value
+    if (rs1 == state.MEM["DestReg"]) and (state.MEM["RdDMem"] != 1 or state.MEM["WBEnable"] != 1):
+        state.EX["Operand1"] = state.MEM["ALUresult"]
+    elif (rs1 == state.WB["DestReg"]) and state.WB["wrt_enable"] == 1:
+        # in case of load value take from write back stage
+        state.EX["Operand1"] = state.WB["Wrt_data"]
+    elif (rs1 == state.MEM["DestReg"]) and state.MEM["RdDMem"] == 1 and state.MEM["WBEnable"] == 1:
+        state.EX["nop"] = 1
+        return
+    else:
+        state.EX["Operand1"] = register_file.readRF(rs1)
+    
+    #-------------------------------Forwarding logic ends-----------------------------------
+
+    # state.EX["Operand1"] = register_file.readRF(rs1)
     state.EX["Imm"] = twos_comp(int(imm,2), 12)
     state.EX["DestReg"] = rd
     state.EX["is_I_type"] = 1
@@ -224,14 +239,16 @@ def instruction_decode(s, state, register_file, memory):
         b_type(s, state, register_file, memory)
     # Halt 1111111
     elif s[-7:] == "1111111":
-        print("do H type")
+        print("Halt detected")
         state.EX["WrDMem"] = 0
         state.EX["RdDMem"] = 0
-        state.IF["nop"] = True
+        state.EX["halt"] = True
+        state.ID["halt"] = True
+        state.IF["halt"] = True
 
 
 def instruction_exec(state, alucontrol, op1, op2, DestReg, nextState):
-    print(op1,op2)
+    # print(op1,op2)
     state.MEM["DestReg"] = DestReg
     if not state.EX['branch']:
         if alucontrol == "0110":
@@ -249,7 +266,7 @@ def instruction_exec(state, alucontrol, op1, op2, DestReg, nextState):
             res = ""
             for i in range(len(op1)):
                 res = res + str(int(op1[i]) & int(op2[i]))
-            print(res)
+            # print(res)
             state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(res,2)))
 
         elif alucontrol == "0001":
@@ -297,8 +314,8 @@ def instruction_exec(state, alucontrol, op1, op2, DestReg, nextState):
             nextState.IF["PC"] = state.IF["PC"] + imm
 
 
-def instruction_mem(state, RdDMem, WrDMem, memory, ALUresult, DestReg, WBEnable):
-    print(RdDMem, WrDMem, WBEnable)
+def instruction_mem(state, RdDMem, WrDMem, memory, ALUresult, DestReg, WBEnable, register):
+    # print(RdDMem, WrDMem, WBEnable)
     if RdDMem == 1 and WBEnable == 1:
         print("Read From memory")
         state.WB["Wrt_data"] = memory.readMem(int(ALUresult, 2))
@@ -313,7 +330,9 @@ def instruction_mem(state, RdDMem, WrDMem, memory, ALUresult, DestReg, WBEnable)
 
     if WrDMem == 1:
         print("Write to memory", ALUresult, DestReg)
-        memory.writeDataMem(DestReg, ALUresult)
+        # write in memory location of ALUresult
+        # write data stored in DestReg
+        memory.writeDataMem(ALUresult, register.readRF(DestReg))
         state.WB["wrt_enable"] = 0
 
 

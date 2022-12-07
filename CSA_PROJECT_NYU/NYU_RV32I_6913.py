@@ -15,7 +15,7 @@ class InsMem(object):
     def readInstr(self, ReadAddress):
         #read instruction memory
         #return 32 bit hex val
-        print(ReadAddress, [i for idx,i in enumerate(self.IMem) if (idx >= ReadAddress) and (idx < ReadAddress + 4)])
+        # print(ReadAddress, [i for idx,i in enumerate(self.IMem) if (idx >= ReadAddress) and (idx < ReadAddress + 4)])
         return "".join([i for idx,i in enumerate(self.IMem) if (idx >= ReadAddress) and (idx < ReadAddress + 4)])
 
 
@@ -25,6 +25,7 @@ class DataMem(object):
         self.ioDir = ioDir
         with open(ioDir + "/dmem.txt") as dm:
             self.DMem = [data.replace("\n", "") for data in dm.readlines()]
+        
 
     def readMem(self, ReadAddress):
         #read data memory
@@ -41,17 +42,30 @@ class DataMem(object):
 
     def writeDataMem(self, Address, WriteData):
         # write data into byte addressable memory
+
         curr_len = len(self.DMem)
         if int(Address,2) > curr_len:
             to_append = int(Address,2) - curr_len
-            self.DMem = ["00000000"]*to_append
-
+            self.DMem += ["00000000"]*to_append
+        curr_len = len(self.DMem)
         # WriteData is 32 to bit string
         bits_split = 8
         fill_remain = "0"
-        self.DMem += self.divideString(WriteData, bits_split, fill_remain)
+        array = self.divideString(WriteData, bits_split, fill_remain)
+
+        array_counter = 0
+        for i in range(int(Address,2),int(Address,2)+4):
+            if i >= curr_len:
+                self.DMem.append(array[array_counter])
+            else:
+                self.DMem[i] = array[array_counter]
+            array_counter += 1
 
     def outputDataMem(self):
+        curr_len = len(self.DMem)
+        if 1000 > curr_len:
+            to_append = 1000 - curr_len
+            self.DMem += ["00000000"]*to_append
         resPath = self.ioDir + "/" + self.id + "_DMEMResult.txt"
         with open(resPath, "w") as rp:
             rp.writelines([str(data) + "\n" for data in self.DMem])
@@ -68,7 +82,7 @@ class RegisterFile(object):
 
     def writeRF(self, Reg_addr, Wrt_reg_data):
         # Fill in
-        print(Reg_addr,Wrt_reg_data,self.Registers[int(Reg_addr,2)])
+        # print(Reg_addr,Wrt_reg_data,self.Registers[int(Reg_addr,2)])
         self.Registers[int(Reg_addr,2)] = Wrt_reg_data
 
 
@@ -83,17 +97,17 @@ class RegisterFile(object):
 
 class State(object):
     def __init__(self):
-        self.IF = {"nop": False, "PC": 0, "counter": 0}
-        self.ID = {"nop": False, "Instr": 0}
+        self.IF = {"nop": False, "PC": 0, "counter": 0, "halt":False}
+        self.ID = {"nop": False, "Instr": 0, "halt":False}
         self.EX = {
             "nop": False, "Operand1": 0, "Operand2": 0, "Imm": 0, "mux_out1": 0,
             "mux_out2": 0, "DestReg": 0, "is_I_type": False, "RdDMem": 0, "WrDMem": 0,
             "AluOperation": 0, "WBEnable": 0, "StData": 0, "AluControlInput": 0, "branch": 0,
-            "jump": 0,
+            "jump": 0, "halt":False
         }
         self.MEM = {"nop": False, "ALUresult": 0, "Store_data": 0, "Rs": 0, "Rt": 0, "DestReg": 0, "RdDMem": 0,
-                   "WrDMem": 0, "WBEnable": 0}
-        self.WB = {"nop": False, "Wrt_data": 0, "Rs": 0, "Rt": 0, "DestReg": 0, "wrt_enable": 0}
+                   "WrDMem": 0, "WBEnable": 0, "halt":False}
+        self.WB = {"nop": False, "Wrt_data": 0, "Rs": 0, "Rt": 0, "DestReg": 0, "wrt_enable": 0, "halt":False}
 
 
 class Core(object):
@@ -197,53 +211,76 @@ class FiveStageCore(Core):
 
     def step(self):
         # Your implementation
+
+        #------------------------Get Halt and PC status from last state-----
+        self.nextState.IF["PC"] = self.state.IF["PC"]
+        self.nextState.IF["halt"] = self.state.IF["halt"]
+        self.nextState.ID["halt"] = self.state.ID["halt"]
+        self.nextState.EX["halt"] = self.state.EX["halt"]
+        self.nextState.MEM["halt"] = self.state.MEM["halt"]
+        self.nextState.WB["halt"] = self.state.WB["halt"]
+
+
         # --------------------- WB stage ---------------------
 
-        print("WB Stage")
-        write_nack(self.state.WB["DestReg"], self.state.WB["Wrt_data"], self.state.WB["wrt_enable"], self.myRF)
+        print("WB Stage----------------")
+        if self.state.WB["halt"] == True:
+            print("Last Cycle")
+            self.halted = True
+        else:
+            write_nack(self.state.WB["DestReg"], self.state.WB["Wrt_data"], self.state.WB["wrt_enable"], self.myRF)
 
         # --------------------- MEM stage --------------------
 
-        print("MEM Stage")
+        print("MEM Stage----------------")
 
-        instruction_mem(self.nextState, self.state.MEM["RdDMem"], self.state.MEM["WrDMem"], self.ext_dmem, self.state.MEM["ALUresult"], self.state.MEM["DestReg"], self.state.MEM["WBEnable"])
-        if self.state.EX["nop"] == True:
-            self.nextState.MEM["nop"] = True
+        if self.state.WB["halt"] == True or self.state.MEM["halt"] == True:
+            self.nextState.WB["halt"] = True
+        else:
+            instruction_mem(self.nextState, self.state.MEM["RdDMem"], self.state.MEM["WrDMem"], self.ext_dmem, self.state.MEM["ALUresult"], self.state.MEM["DestReg"], self.state.MEM["WBEnable"], self.myRF)
+            if self.state.EX["nop"] == True:
+                self.nextState.MEM["nop"] = True
 
         # --------------------- EX stage ---------------------
-        print("EX Stage")
-        self.nextState.MEM["RdDMem"] = self.state.EX["RdDMem"]
-        self.nextState.MEM["WrDMem"] = self.state.EX["WrDMem"]
-        self.nextState.MEM["WBEnable"] = self.state.EX["WBEnable"]
-        if self.state.EX["nop"] == True:
-            self.nextState.MEM["nop"] = True
-        instruction_exec(self.nextState, self.state.EX["AluControlInput"], self.state.EX["mux_out1"], self.state.EX["mux_out2"], self.state.EX["DestReg"])
+        print("EX Stage----------------")
+        # halt condition
+        if self.state.WB["halt"] == True or self.state.MEM["halt"] == True or self.state.EX["halt"] == True:
+            self.nextState.MEM["halt"] = True
+        else:
+            self.nextState.MEM["RdDMem"] = self.state.EX["RdDMem"]
+            self.nextState.MEM["WrDMem"] = self.state.EX["WrDMem"]
+            self.nextState.MEM["WBEnable"] = self.state.EX["WBEnable"]
+            if self.state.EX["nop"] == True:
+                self.nextState.MEM["nop"] = True
+            instruction_exec(self.nextState, self.state.EX["AluControlInput"], self.state.EX["mux_out1"], self.state.EX["mux_out2"], self.state.EX["DestReg"], self.nextState)
 
 
         # --------------------- ID stage ---------------------
         print("ID Stage----------------")
-        if self.state.ID["Instr"] != 0:
-            instruction_decode(self.state.ID["Instr"], self.nextState, self.myRF, self.ext_dmem)
-        if self.state.ID["nop"] == True:
-            self.nextState.EX["nop"] = True
+        if self.state.WB["halt"] == True or self.state.MEM["halt"] == True or self.state.EX["halt"] == True:
+            print("Halt")
+        else:
+            if self.state.ID["Instr"] != 0:
+                instruction_decode(self.state.ID["Instr"], self.nextState, self.myRF, self.ext_dmem)
+            if self.state.ID["nop"] == True:
+                self.nextState.EX["nop"] = True
         
-
 
         # --------------------- IF stage ---------------------
         print("IF Stage---------------", self.state.IF["PC"])
 
-        # Adding stall / nop in case for load
-        if self.nextState.EX["nop"] == True:
-            self.nextState.ID["Instr"] = self.state.ID["Instr"]
-            self.nextState.IF["PC"] = self.state.IF["PC"]
+        if self.state.WB["halt"] == True or self.state.MEM["halt"] == True or self.state.EX["halt"] == True:
+            print("Halt")
         else:
-            self.nextState.ID["Instr"] = self.ext_imem.readInstr(int(self.state.IF["PC"]))
-            self.nextState.IF["PC"] = self.state.IF["PC"] + 4
-        if self.state.IF["nop"] == True:
-            self.nextState.ID["nop"] == True
-
-        print(self.nextState.ID["Instr"])
-
+            # Adding stall / nop in case for load
+            if self.nextState.EX["nop"] == True:
+                self.nextState.ID["Instr"] = self.state.ID["Instr"]
+                self.nextState.IF["PC"] = self.state.IF["PC"]
+            else:
+                self.nextState.ID["Instr"] = self.ext_imem.readInstr(int(self.state.IF["PC"]))
+                # self.nextState.IF["PC"] = self.state.IF["PC"] + 4
+            if self.state.IF["nop"] == True:
+                self.nextState.ID["nop"] == True
 
         # self.halted = True
         if self.state.IF["nop"] and self.state.ID["nop"] and self.state.EX["nop"] and self.state.MEM["nop"] and self.state.WB["nop"]:
@@ -282,11 +319,11 @@ if __name__ == "__main__":
     print("IO Directory:", ioDir)
 
     imem = InsMem("Imem", ioDir)
-    print("imem",imem.IMem)
+    # print("imem",imem.IMem)
     dmem_ss = DataMem("SS", ioDir)
-    print("dmem_ss",dmem_ss.DMem)
+    # print("dmem_ss",dmem_ss.DMem)
     dmem_fs = DataMem("FS", ioDir)
-    print("dmem_fs",dmem_fs.DMem)
+    # print("dmem_fs",dmem_fs.DMem)
 
     # ssCore = SingleStageCore(ioDir, imem, dmem_ss)
     fsCore = FiveStageCore(ioDir, imem, dmem_fs)
@@ -312,5 +349,6 @@ if __name__ == "__main__":
         # if ssCore.halted and fsCore.halted:
         #     break
     # dump SS and FS data mem.
+    print(dmem_fs.DMem)
     dmem_ss.outputDataMem()
     dmem_fs.outputDataMem()
