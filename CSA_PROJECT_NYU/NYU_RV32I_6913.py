@@ -85,8 +85,12 @@ class State(object):
     def __init__(self):
         self.IF = {"nop": False, "PC": 0, "counter": 0}
         self.ID = {"nop": False, "Instr": 0}
-        self.EX = {"nop": False, "Operand1": 0, "Operand2": 0, "Imm": 0, "mux_out1": 0, "mux_out2": 0, "DestReg": 0, "is_I_type": False, "RdDMem": 0,
-                   "WrDMem": 0, "AluOperation": 0, "WBEnable": 0, "StData": 0, "AluControlInput": 0}
+        self.EX = {
+            "nop": False, "Operand1": 0, "Operand2": 0, "Imm": 0, "mux_out1": 0,
+            "mux_out2": 0, "DestReg": 0, "is_I_type": False, "RdDMem": 0, "WrDMem": 0,
+            "AluOperation": 0, "WBEnable": 0, "StData": 0, "AluControlInput": 0, "branch": 0,
+            "jump": 0,
+        }
         self.MEM = {"nop": False, "ALUresult": 0, "Store_data": 0, "Rs": 0, "Rt": 0, "DestReg": 0, "RdDMem": 0,
                    "WrDMem": 0, "WBEnable": 0}
         self.WB = {"nop": False, "Wrt_data": 0, "Rs": 0, "Rt": 0, "DestReg": 0, "wrt_enable": 0}
@@ -127,12 +131,26 @@ class SingleStageCore(Core):
         self.state.MEM["RdDMem"] = self.state.EX["RdDMem"]
         self.state.MEM["WrDMem"] = self.state.EX["WrDMem"]
         self.state.MEM["WBEnable"] = self.state.EX["WBEnable"]
-        instruction_exec(self.state, self.state.EX["AluControlInput"], self.state.EX["mux_out1"], self.state.EX["mux_out2"], self.state.EX["DestReg"])
+        instruction_exec(
+            self.state,
+            self.state.EX["AluControlInput"],
+            self.state.EX["mux_out1"],
+            self.state.EX["mux_out2"],
+            self.state.EX["DestReg"],
+            self.nextState,
+        )
 
         # --------------------- MEM stage ---------------------
         print("MEM Stage")
 
-        instruction_mem(self.state, self.state.MEM["RdDMem"], self.state.MEM["WrDMem"], self.ext_dmem, self.state.MEM["ALUresult"], self.state.MEM["DestReg"], self.state.MEM["WBEnable"])
+        instruction_mem(
+            self.state, self.state.MEM["RdDMem"],
+            self.state.MEM["WrDMem"],
+            self.ext_dmem,
+            self.state.MEM["ALUresult"],
+            self.state.MEM["DestReg"],
+            self.state.MEM["WBEnable"],
+        )
 
         # --------------------- WB stage ---------------------
         print("WB Stage")
@@ -140,7 +158,7 @@ class SingleStageCore(Core):
 
         # read instruction
         # self.nextState.ID["Instr"] = imem.IMem
-        self.nextState.IF["PC"] = self.state.IF["PC"] + 4
+        # self.nextState.IF["PC"] = self.state.IF["PC"] + 4
 
         # self.halted = True
         if self.state.IF["nop"]:
