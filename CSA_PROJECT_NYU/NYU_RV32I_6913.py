@@ -188,29 +188,46 @@ class FiveStageCore(Core):
 
         print("MEM Stage")
 
-        instruction_mem(self.state, self.state.MEM["RdDMem"], self.state.MEM["WrDMem"], self.ext_dmem, self.state.MEM["ALUresult"], self.state.MEM["DestReg"], self.state.MEM["WBEnable"])
+        instruction_mem(self.nextState, self.state.MEM["RdDMem"], self.state.MEM["WrDMem"], self.ext_dmem, self.state.MEM["ALUresult"], self.state.MEM["DestReg"], self.state.MEM["WBEnable"])
+        if self.state.EX["nop"] == True:
+            self.nextState.MEM["nop"] = True
 
         # --------------------- EX stage ---------------------
         print("EX Stage")
-        self.state.MEM["RdDMem"] = self.state.EX["RdDMem"]
-        self.state.MEM["WrDMem"] = self.state.EX["WrDMem"]
-        self.state.MEM["WBEnable"] = self.state.EX["WBEnable"]
-        instruction_exec(self.state, self.state.EX["AluControlInput"], self.state.EX["mux_out1"], self.state.EX["mux_out2"], self.state.EX["DestReg"])
+        self.nextState.MEM["RdDMem"] = self.state.EX["RdDMem"]
+        self.nextState.MEM["WrDMem"] = self.state.EX["WrDMem"]
+        self.nextState.MEM["WBEnable"] = self.state.EX["WBEnable"]
+        if self.state.EX["nop"] == True:
+            self.nextState.MEM["nop"] = True
+        instruction_exec(self.nextState, self.state.EX["AluControlInput"], self.state.EX["mux_out1"], self.state.EX["mux_out2"], self.state.EX["DestReg"])
 
 
         # --------------------- ID stage ---------------------
         print("ID Stage----------------")
-        instruction_decode(self.state.ID["Instr"], self.state, self.myRF, self.ext_dmem)
+        if self.state.ID["Instr"] != 0:
+            instruction_decode(self.state.ID["Instr"], self.nextState, self.myRF, self.ext_dmem)
+        if self.state.ID["nop"] == True:
+            self.nextState.EX["nop"] = True
+        
 
 
         # --------------------- IF stage ---------------------
         print("IF Stage---------------", self.state.IF["PC"])
 
-        self.state.ID["Instr"] = self.ext_imem.readInstr(int(self.state.IF["PC"]))
+        # Adding stall / nop in case for load
+        if self.nextState.EX["nop"] == True:
+            self.nextState.ID["Instr"] = self.state.ID["Instr"]
+            self.nextState.IF["PC"] = self.state.IF["PC"]
+        else:
+            self.nextState.ID["Instr"] = self.ext_imem.readInstr(int(self.state.IF["PC"]))
+            self.nextState.IF["PC"] = self.state.IF["PC"] + 4
+        if self.state.IF["nop"] == True:
+            self.nextState.ID["nop"] == True
 
-        print(self.state.ID["Instr"])
+        print(self.nextState.ID["Instr"])
 
-        self.halted = True
+
+        # self.halted = True
         if self.state.IF["nop"] and self.state.ID["nop"] and self.state.EX["nop"] and self.state.MEM["nop"] and self.state.WB["nop"]:
             self.halted = True
 
@@ -218,6 +235,8 @@ class FiveStageCore(Core):
         self.printState(self.nextState, self.cycle) # print states after executing cycle 0, cycle 1, cycle 2 ...
 
         self.state = self.nextState #The end of the cycle and updates the current state with the values calculated in this cycle
+
+        self.nextState = State()
         self.cycle += 1
 
     def printState(self, state, cycle):
@@ -251,15 +270,15 @@ if __name__ == "__main__":
     dmem_fs = DataMem("FS", ioDir)
     print("dmem_fs",dmem_fs.DMem)
 
-    ssCore = SingleStageCore(ioDir, imem, dmem_ss)
-    # fsCore = FiveStageCore(ioDir, imem, dmem_fs)
+    # ssCore = SingleStageCore(ioDir, imem, dmem_ss)
+    fsCore = FiveStageCore(ioDir, imem, dmem_fs)
 
     count = 0
     while True:
         # print('-------------------------------------')
-        if not ssCore.halted:
-            ssCore.step()
-            count = 0
+        # if not ssCore.halted:
+        #     ssCore.step()
+        #     count = 0
             # comment
         # else:
         #     count += 1
@@ -268,9 +287,9 @@ if __name__ == "__main__":
         #     print("issue")
         #     break
 
-        # if not fsCore.halted:
-        #     fsCore.step()
-        if ssCore.halted:
+        if not fsCore.halted:
+            fsCore.step()
+        if fsCore.halted:
             break
         # if ssCore.halted and fsCore.halted:
         #     break
