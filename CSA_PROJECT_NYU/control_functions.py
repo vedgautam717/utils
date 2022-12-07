@@ -22,6 +22,19 @@ def twos_comp_str(s):
     return '{:032b}'.format(int(''.join(s), 2) + 1)
 
 
+def reset_state(state):
+    state.IF = {"nop": False, "PC": 0, "counter": 0}
+    state.ID = {"nop": False, "Instr": 0}
+    state.EX = {
+        "nop": False, "Operand1": 0, "Operand2": 0, "Imm": 0, "mux_out1": 0,
+        "mux_out2": 0, "DestReg": 0, "is_I_type": False, "RdDMem": 0, "WrDMem": 0,
+        "AluOperation": 0, "WBEnable": 0, "StData": 0, "AluControlInput": 0, "branch": 0,
+        "jump": 0,
+    }
+    state.MEM = {"nop": False, "ALUresult": 0, "Store_data": 0, "Rs": 0, "Rt": 0, "DestReg": 0, "RdDMem": 0,
+            "WrDMem": 0, "WBEnable": 0}
+
+
 def r_type(s, state, register_file, memory):
 
     rd = s[-12:-7]
@@ -131,20 +144,36 @@ def s_type(s, state, register_file, memory):
     state.EX["mux_out2"] = imm[0]*diff_len + imm
     state.EX["Imm"] = state.EX["mux_out2"]
 
+
 def j_type(s, state, register_file, memory):
 
     opcode = s[-7:]
     rd = s[-12:-7]
-    imm = s[:-12]
+    imm = s[0] + s[12:20] + s[11:12] + s[1:11]
+    state.EX["Imm"] = imm
+    state.EX["branch"] = 1
+    state.EX["jump"] = 1
+    state.EX["DestReg"] = rd
+    state.EX["RdDMem"] = 1
+    state.EX["WrDMem"] = 0
+
 
 def b_type(s, state, register_file, memory):
 
+    imm = s[0] + s[-8] + s[1:-25] + s[-12:-8]
     opcode = s[-7:]
-    imm1 = s[-12:-7]
     func3 = s[-15:-12]
     rs1 = s[-20:-15]
     rs2 = s[-25:-20]
-    imm2 = s[:-25]
+
+    state.EX["Operand1"] = register_file.readRF(rs1)
+    state.EX["Operand2"] = register_file.readRF(rs2)
+    state.EX["branch"] = 1
+    state.EX["Imm"] = imm
+    state.EX["mux_out1"] = state.EX["Operand1"]
+    state.EX["mux_out2"] = state.EX["Operand2"]
+    state.EX["AluOperation"] = "00"
+    state.EX["AluControlInput"] = s[17:20]
 
 
 def instruction_decode(s, state, register_file, memory):
@@ -176,38 +205,71 @@ def instruction_decode(s, state, register_file, memory):
         state.IF["nop"] = True
 
 
-def instruction_exec(state, alucontrol, op1, op2, DestReg):
+def instruction_exec(state, alucontrol, op1, op2, DestReg, nextState):
     print(op1,op2)
     state.MEM["DestReg"] = DestReg
-    if alucontrol == "0110":
-        print("SUB")
-        state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(op1,2) + int(twos_comp_str(op2), 2)))
+    if not state.EX['branch']:
+        if alucontrol == "0110":
+            print("SUB")
+            state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(op1,2) + int(twos_comp_str(op2), 2)))
 
-    elif alucontrol == "0010":
-        print("ADD..............")
-        # print(int(op1,2) + int(op2,2), '{0:032b}'.format(int(op1,2) + int(op2,2)))
-        state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(op1,2) + int(op2,2)))
+        elif alucontrol == "0010":
+            print("ADD..............")
+            # print(int(op1,2) + int(op2,2), '{0:032b}'.format(int(op1,2) + int(op2,2)))
+            state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(op1,2) + int(op2,2)))
 
-    elif alucontrol == "0000":
-        print("AND")
-        # Initialize res as NULL string
-        res = ""
-        for i in range(len(op1)):
-            res = res + str(int(op1[i]) & int(op2[i]))
-        print(res)
-        state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(res,2)))
+        elif alucontrol == "0000":
+            print("AND")
+            # Initialize res as NULL string
+            res = ""
+            for i in range(len(op1)):
+                res = res + str(int(op1[i]) & int(op2[i]))
+            print(res)
+            state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(res,2)))
 
-    elif alucontrol == "0001":
-        print("OR")
-        res = ""
-        for i in range(len(op1)):
-            res = res + str(int(op1[i]) or int(op2[i]))
+        elif alucontrol == "0001":
+            print("OR")
+            res = ""
+            for i in range(len(op1)):
+                res = res + str(int(op1[i]) or int(op2[i]))
 
-        state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(res,2)))
+            state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(res,2)))
 
-    elif alucontrol == "0011":
-        print("XOR")
-        state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(op1,2) ^ int(op2,2)))
+        elif alucontrol == "0011":
+            print("XOR")
+            state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(op1,2) ^ int(op2,2)))
+        nextState.IF["PC"] = state.IF["PC"] + 4
+    else:
+        if alucontrol == "000":
+            print("BEQ")
+            if op1 == op2:
+                imm = [
+                    (int(state.EX["Imm"], 2) << 1),
+                    (int(twos_comp_str(state.EX["Imm"]), 2) << 1) * -1
+                ][state.EX["Imm"][0] == '1']
+                nextState.IF["PC"] = state.IF["PC"] + imm
+                reset_state(state)
+            else:
+                nextState.IF["PC"] = state.IF["PC"] + 4
+        elif alucontrol == "001":
+            print("BNE")
+            if op1 != op2:
+                imm = [
+                    (int(state.EX["Imm"], 2) << 1),
+                    (int(twos_comp_str(state.EX["Imm"]), 2) << 1) * -1
+                ][state.EX["Imm"][0] == '1']
+                nextState.IF["PC"] = state.IF["PC"] + imm
+                reset_state(state)
+            else:
+                nextState.IF["PC"] = state.IF["PC"] + 4
+        elif state.EX["jump"]:
+            print("JAL")
+            state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(state.IF["PC"] + 4))
+            imm = [
+                (int(state.EX["Imm"], 2) << 1),
+                (int(twos_comp_str(state.EX["Imm"]), 2) << 1) * -1
+            ][state.EX["Imm"][0] == '1']
+            nextState.IF["PC"] = state.IF["PC"] + imm
 
 
 def instruction_mem(state, RdDMem, WrDMem, memory, ALUresult, DestReg, WBEnable):
