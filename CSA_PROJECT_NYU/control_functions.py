@@ -23,16 +23,16 @@ def twos_comp_str(s):
 
 
 def reset_state(state):
-    state.IF = {"nop": False, "PC": 0, "counter": 0}
-    state.ID = {"nop": False, "Instr": 0}
+    state.IF = {"nop": False, "PC": 0, "counter": 0, 'halt': False}
+    state.ID = {"nop": False, "Instr": 0, 'halt': False}
     state.EX = {
         "nop": False, "Operand1": 0, "Operand2": 0, "Imm": 0, "mux_out1": 0,
         "mux_out2": 0, "DestReg": 0, "is_I_type": False, "RdDMem": 0, "WrDMem": 0,
         "AluOperation": 0, "WBEnable": 0, "StData": 0, "AluControlInput": 0, "branch": 0,
-        "jump": 0,
+        "jump": 0, 'halt': False,
     }
     state.MEM = {"nop": False, "ALUresult": 0, "Store_data": 0, "Rs": 0, "Rt": 0, "DestReg": 0, "RdDMem": 0,
-            "WrDMem": 0, "WBEnable": 0}
+            "WrDMem": 0, "WBEnable": 0, 'halt': False,}
 
 
 def r_type(s, state, register_file, memory):
