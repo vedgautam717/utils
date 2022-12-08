@@ -209,7 +209,7 @@ def j_type(s, state, register_file, memory, curr_state):
         (int(state.EX["Imm"], 2) << 1),
         (int(twos_comp_str(state.EX["Imm"]), 2) << 1) * -1
     ][state.EX["Imm"][0] == '1']
-    state.IF["PC"] = curr_state.EX["PC"] + imm
+    state.IF["PC"] = curr_state.ID["PC"] + imm
 
 
 def b_type(s, state, register_file, memory, curr_state):
