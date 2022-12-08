@@ -98,12 +98,12 @@ class RegisterFile(object):
 class State(object):
     def __init__(self):
         self.IF = {"nop": False, "PC": 0, "counter": 0, "halt":False}
-        self.ID = {"nop": False, "Instr": 0, "halt":False}
+        self.ID = {"nop": False, "Instr": 0, "halt":False, "PC": 0}
         self.EX = {
             "nop": False, "Operand1": 0, "Operand2": 0, "Imm": 0, "mux_out1": 0,
             "mux_out2": 0, "DestReg": 0, "is_I_type": False, "RdDMem": 0, "WrDMem": 0,
             "AluOperation": 0, "WBEnable": 0, "StData": 0, "AluControlInput": 0, "branch": 0,
-            "jump": 0, "halt": False
+            "jump": 0, "halt": False, "PC": 0
         }
         self.MEM = {"nop": False, "ALUresult": 0, "Store_data": 0, "Rs": 0, "Rt": 0, "DestReg": 0, "RdDMem": 0,
                    "WrDMem": 0, "WBEnable": 0, "halt": False}
@@ -136,12 +136,12 @@ class SingleStageCore(Core):
         print("IF Stage---------------", self.state.IF["PC"])
 
         self.state.ID["Instr"] = self.ext_imem.readInstr(int(self.state.IF["PC"]))
-
+        self.state.ID["PC"] = self.state.IF["PC"]
         print(self.state.ID["Instr"])
 
         # --------------------- ID stage --------------------
         print("ID Stage----------------")
-        instruction_decode(self.state.ID["Instr"], self.state, self.myRF, self.ext_dmem)
+        instruction_decode(self.state.ID["Instr"], self.state, self.myRF, self.ext_dmem, self.state)
 
         # --------------------- EX stage ---------------------
         print("EX Stage")
@@ -157,7 +157,6 @@ class SingleStageCore(Core):
                 self.state.EX["mux_out1"],
                 self.state.EX["mux_out2"],
                 self.state.EX["DestReg"],
-                self.state,
             )
 
         # --------------------- MEM stage ---------------------
@@ -245,6 +244,7 @@ class FiveStageCore(Core):
         print("EX Stage----------------")
         # halt condition
         if self.state.WB["halt"] == True or self.state.MEM["halt"] == True or self.state.EX["halt"] == True:
+
             self.nextState.MEM["halt"] = True
         else:
             self.nextState.MEM["RdDMem"] = self.state.EX["RdDMem"]
@@ -252,19 +252,30 @@ class FiveStageCore(Core):
             self.nextState.MEM["WBEnable"] = self.state.EX["WBEnable"]
             if self.state.EX["nop"] == True:
                 self.nextState.MEM["nop"] = True
-            instruction_exec(self.nextState, self.state.EX["AluControlInput"], self.state.EX["mux_out1"], self.state.EX["mux_out2"], self.state.EX["DestReg"], self.nextState)
+
+            instruction_exec(self.nextState, self.state.EX["AluControlInput"], self.state.EX["mux_out1"], self.state.EX["mux_out2"], self.state.EX["DestReg"])
 
 
         # --------------------- ID stage ---------------------
+
         print("ID Stage----------------")
         if self.state.WB["halt"] == True or self.state.MEM["halt"] == True or self.state.EX["halt"] == True:
             print("Halt")
         else:
             if self.state.ID["Instr"] != 0:
-                instruction_decode(self.state.ID["Instr"], self.nextState, self.myRF, self.ext_dmem)
+                instruction_decode(self.state.ID["Instr"], self.nextState, self.myRF, self.ext_dmem, self.state)
+                self.nextState.EX["PC"] = self.state.ID["PC"]
+            else:
+                self.nextState.IF["PC"] = self.state.IF["PC"] + 4
             if self.state.ID["nop"] == True:
                 self.nextState.EX["nop"] = True
         
+        #*****************imp change******************
+        # halt reset if branching or jump
+        if self.nextState.EX["halt"] == True and (self.state.ID["PC"] > self.state.IF["PC"] or self.state.IF["PC"]  + 4 < self.state.IF["PC"]):
+            self.nextState.EX["halt"] = False
+            self.nextState.ID["halt"] = False
+            self.nextState.IF["halt"] = False
 
         # --------------------- IF stage ---------------------
         print("IF Stage---------------", self.state.IF["PC"])
@@ -278,13 +289,14 @@ class FiveStageCore(Core):
                 self.nextState.IF["PC"] = self.state.IF["PC"]
             else:
                 self.nextState.ID["Instr"] = self.ext_imem.readInstr(int(self.state.IF["PC"]))
-                # self.nextState.IF["PC"] = self.state.IF["PC"] + 4
+                self.nextState.ID["PC"] = self.state.IF["PC"]
             if self.state.IF["nop"] == True:
                 self.nextState.ID["nop"] == True
 
         # self.halted = True
         if self.state.IF["nop"] and self.state.ID["nop"] and self.state.EX["nop"] and self.state.MEM["nop"] and self.state.WB["nop"]:
             self.halted = True
+
 
         self.myRF.outputRF(self.cycle) # dump RF
         self.printState(self.nextState, self.cycle) # print states after executing cycle 0, cycle 1, cycle 2 ...
@@ -331,14 +343,14 @@ if __name__ == "__main__":
     count = 0
     while True:
         # print('-------------------------------------')
-        if not ssCore.halted:
-            ssCore.step()
-        if ssCore.halted:
-            break
-        # if not fsCore.halted:
-        #     fsCore.step()
-        # if fsCore.halted:
+        # if not ssCore.halted:
+        #     ssCore.step()
+        # if ssCore.halted:
         #     break
+        if not fsCore.halted:
+            fsCore.step()
+        if fsCore.halted:
+            break
         # if ssCore.halted and fsCore.halted:
         #     break
     # dump SS and FS data mem.

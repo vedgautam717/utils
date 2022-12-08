@@ -31,11 +31,9 @@ def reset_state(state):
         "AluOperation": 0, "WBEnable": 0, "StData": 0, "AluControlInput": 0, "branch": 0,
         "jump": 0, 'halt': False,
     }
-    state.MEM = {"nop": False, "ALUresult": 0, "Store_data": 0, "Rs": 0, "Rt": 0, "DestReg": 0, "RdDMem": 0,
-            "WrDMem": 0, "WBEnable": 0, 'halt': False,}
 
 
-def r_type(s, state, register_file, memory):
+def r_type(s, state, register_file, memory, curr_state):
 
     rd = s[-12:-7]
     func3 = s[-15:-12]
@@ -100,8 +98,10 @@ def r_type(s, state, register_file, memory):
     state.EX["RdDMem"] = 1
     state.EX["WrDMem"] = 0
 
+    state.IF["PC"] = curr_state.IF["PC"] + 4
 
-def i_type(s, state, register_file, memory):
+
+def i_type(s, state, register_file, memory, curr_state):
     opcode = s[-7:]
     rd = s[-12:-7]
     func3 = s[-15:-12]
@@ -158,9 +158,11 @@ def i_type(s, state, register_file, memory):
     elif func3 == "111":
         print("ANDI")
         state.EX["AluControlInput"] = "0000"
+    
+    state.IF["PC"] = curr_state.IF["PC"] + 4
 
 
-def s_type(s, state, register_file, memory):
+def s_type(s, state, register_file, memory, curr_state):
 
     imm1 = s[-12:-7]
     rs1 = s[-20:-15]
@@ -184,8 +186,10 @@ def s_type(s, state, register_file, memory):
     state.EX["mux_out2"] = imm[0]*diff_len + imm
     state.EX["Imm"] = state.EX["mux_out2"]
 
+    state.IF["PC"] = curr_state.IF["PC"] + 4
 
-def j_type(s, state, register_file, memory):
+
+def j_type(s, state, register_file, memory, curr_state):
 
     opcode = s[-7:]
     rd = s[-12:-7]
@@ -193,12 +197,22 @@ def j_type(s, state, register_file, memory):
     state.EX["Imm"] = imm
     state.EX["branch"] = 1
     state.EX["jump"] = 1
+
     state.EX["DestReg"] = rd
     state.EX["RdDMem"] = 1
     state.EX["WrDMem"] = 0
 
+    # jump Logic
+    print("JAL")        
+    state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(curr_state.IF["PC"] + 4))
+    imm = [
+        (int(state.EX["Imm"], 2) << 1),
+        (int(twos_comp_str(state.EX["Imm"]), 2) << 1) * -1
+    ][state.EX["Imm"][0] == '1']
+    state.IF["PC"] = curr_state.EX["PC"] + imm
 
-def b_type(s, state, register_file, memory):
+
+def b_type(s, state, register_file, memory, curr_state):
 
     imm = s[0] + s[-8] + s[1:-25] + s[-12:-8]
     opcode = s[-7:]
@@ -206,8 +220,31 @@ def b_type(s, state, register_file, memory):
     rs1 = s[-20:-15]
     rs2 = s[-25:-20]
 
-    state.EX["Operand1"] = register_file.readRF(rs1)
-    state.EX["Operand2"] = register_file.readRF(rs2)
+    #-------------------------------Forwarding logic starts-----------------------------------
+    # Forward for all instructions except for load value
+    if (rs1 == state.MEM["DestReg"]) and (state.MEM["RdDMem"] != 1 or state.MEM["WBEnable"] != 1):
+        state.EX["Operand1"] = state.MEM["ALUresult"]
+    elif (rs1 == state.WB["DestReg"]) and state.WB["wrt_enable"] == 1:
+        # in case of load value take from write back stage
+        state.EX["Operand1"] = state.WB["Wrt_data"]
+    elif (rs1 == state.MEM["DestReg"]) and state.MEM["RdDMem"] == 1 and state.MEM["WBEnable"] == 1:
+        state.EX["nop"] = 1
+        return
+    else:
+        state.EX["Operand1"] = register_file.readRF(rs1)
+    
+    if rs2 == state.MEM["DestReg"] and (state.MEM["RdDMem"] != 1 or state.MEM["WBEnable"] != 1):
+        state.EX["Operand2"] = state.MEM["ALUresult"]
+    elif (rs2 == state.WB["DestReg"]) and state.WB["wrt_enable"] == 1:
+        # in case of load value take from write back stage
+        state.EX["Operand2"] = state.WB["Wrt_data"]
+    elif (rs2 == state.MEM["DestReg"]) and state.MEM["RdDMem"] == 1 and state.MEM["WBEnable"] == 1:
+        state.EX["nop"] = 1
+        return
+    else:
+        state.EX["Operand2"] = register_file.readRF(rs2)
+    
+    #-------------------------------Forwarding logic ends-----------------------------------
     state.EX["branch"] = 1
     state.EX["Imm"] = imm
     state.EX["mux_out1"] = state.EX["Operand1"]
@@ -216,27 +253,55 @@ def b_type(s, state, register_file, memory):
     state.EX["AluControlInput"] = s[17:20]
 
 
-def instruction_decode(s, state, register_file, memory):
+    # Branching Logic
+    if state.EX["AluControlInput"] == "000":
+        print("BEQ")
+        if state.EX["mux_out1"] == state.EX["mux_out2"]:
+            imm = [
+                (int(state.EX["Imm"], 2) << 1),
+                (int(twos_comp_str(state.EX["Imm"]), 2) << 1) * -1
+            ][state.EX["Imm"][0] == '1']
+            curr_pc = curr_state.ID["PC"] + imm
+            reset_state(state)
+            state.IF["PC"] = curr_pc
+        else:
+            state.IF["PC"] = curr_state.IF["PC"] + 4
+    elif state.EX["AluControlInput"] == "001":
+        print("BNE")
+        if state.EX["mux_out1"] != state.EX["mux_out2"]:
+            imm = [
+                (int(state.EX["Imm"], 2) << 1),
+                (int(twos_comp_str(state.EX["Imm"]), 2) << 1) * -1
+            ][state.EX["Imm"][0] == '1']
+            curr_pc = curr_state.ID["PC"] + imm
+            reset_state(state)
+            state.IF["PC"] = curr_pc
+        else:
+            state.IF["PC"] = curr_state.IF["PC"] + 4
+
+
+def instruction_decode(s, state, register_file, memory, curr_state):
     # R Type 0110011
     if s[-7:] == "0110011":
         print("----------------------------------------do R type")
-        r_type(s, state, register_file, memory)
+        r_type(s, state, register_file, memory, curr_state)
+        
     # I Type 0010011 (LW 0000011)
     elif (s[-7:] == "0010011") or (s[-7:] == "0000011"):
         print("-----------------------------------------do I type")
-        i_type(s, state, register_file, memory)
+        i_type(s, state, register_file, memory, curr_state)
     # S Type 0100011
     elif s[-7:] == "0100011":
         print("------------------------------------------do S type")
-        s_type(s, state, register_file, memory)
+        s_type(s, state, register_file, memory, curr_state)
     # J Type 1101111
     elif s[-7:] == "1101111":
         print("do J type")
-        j_type(s, state, register_file, memory)
+        j_type(s, state, register_file, memory, curr_state)
     # B Type 1100011
     elif s[-7:] == "1100011":
         print("do B type")
-        b_type(s, state, register_file, memory)
+        b_type(s, state, register_file, memory, curr_state)
     # Halt 1111111
     elif s[-7:] == "1111111":
         print("Halt detected")
@@ -245,75 +310,76 @@ def instruction_decode(s, state, register_file, memory):
         state.EX["halt"] = True
         state.ID["halt"] = True
         state.IF["halt"] = True
+        state.IF["PC"] = curr_state.IF["PC"] + 4
 
 
-def instruction_exec(state, alucontrol, op1, op2, DestReg, curr_state):
+def instruction_exec(state, alucontrol, op1, op2, DestReg):
     # print(op1,op2)
     state.MEM["DestReg"] = DestReg
-    if not curr_state.EX['branch']:
-        if alucontrol == "0110":
-            print("SUB")
-            state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(op1,2) + int(twos_comp_str(op2), 2)))
+    # if not curr_state.EX['branch']:
+    if alucontrol == "0110":
+        print("SUB")
+        state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(op1,2) + int(twos_comp_str(op2), 2)))
 
-        elif alucontrol == "0010":
-            print("ADD..............")
-            # print(int(op1,2) + int(op2,2), '{0:032b}'.format(int(op1,2) + int(op2,2)))
-            state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(op1,2) + int(op2,2)))
+    elif alucontrol == "0010":
+        print("ADD..............")
+        # print(int(op1,2) + int(op2,2), '{0:032b}'.format(int(op1,2) + int(op2,2)))
+        state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(op1,2) + int(op2,2)))
 
-        elif alucontrol == "0000":
-            print("AND")
-            # Initialize res as NULL string
-            res = ""
-            for i in range(len(op1)):
-                res = res + str(int(op1[i]) & int(op2[i]))
-            # print(res)
-            state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(res,2)))
+    elif alucontrol == "0000":
+        print("AND")
+        # Initialize res as NULL string
+        res = ""
+        for i in range(len(op1)):
+            res = res + str(int(op1[i]) & int(op2[i]))
+        # print(res)
+        state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(res,2)))
 
-        elif alucontrol == "0001":
-            print("OR")
-            res = ""
-            for i in range(len(op1)):
-                res = res + str(int(op1[i]) or int(op2[i]))
+    elif alucontrol == "0001":
+        print("OR")
+        res = ""
+        for i in range(len(op1)):
+            res = res + str(int(op1[i]) or int(op2[i]))
 
-            state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(res,2)))
+        state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(res,2)))
 
-        elif alucontrol == "0011":
-            print("XOR")
-            state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(op1,2) ^ int(op2,2)))
-        state.IF["PC"] = curr_state.IF["PC"] + 4
-    else:
-        if alucontrol == "000":
-            print("BEQ")
-            if op1 == op2:
-                imm = [
-                    (int(curr_state.EX["Imm"], 2) << 1),
-                    (int(twos_comp_str(curr_state.EX["Imm"]), 2) << 1) * -1
-                ][curr_state.EX["Imm"][0] == '1']
-                curr_pc = curr_state.IF["PC"] + imm
-                reset_state(state)
-                state.IF["PC"] = curr_pc
-            else:
-                state.IF["PC"] = curr_state.IF["PC"] + 4
-        elif alucontrol == "001":
-            print("BNE")
-            if op1 != op2:
-                imm = [
-                    (int(curr_state.EX["Imm"], 2) << 1),
-                    (int(twos_comp_str(curr_state.EX["Imm"]), 2) << 1) * -1
-                ][curr_state.EX["Imm"][0] == '1']
-                curr_pc = curr_state.IF["PC"] + imm
-                reset_state(state)
-                state.IF["PC"] = curr_pc
-            else:
-                state.IF["PC"] = curr_state.IF["PC"] + 4
-        elif curr_state.EX["jump"]:
-            print("JAL")
-            state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(curr_state.IF["PC"] + 4))
-            imm = [
-                (int(curr_state.EX["Imm"], 2) << 1),
-                (int(twos_comp_str(curr_state.EX["Imm"]), 2) << 1) * -1
-            ][curr_state.EX["Imm"][0] == '1']
-            state.IF["PC"] = curr_state.IF["PC"] + imm
+    elif alucontrol == "0011":
+        print("XOR")
+        state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(op1,2) ^ int(op2,2)))
+    
+    # else:
+        # if alucontrol == "000":
+        #     print("BEQ")
+        #     if op1 == op2:
+        #         imm = [
+        #             (int(curr_state.EX["Imm"], 2) << 1),
+        #             (int(twos_comp_str(curr_state.EX["Imm"]), 2) << 1) * -1
+        #         ][curr_state.EX["Imm"][0] == '1']
+        #         curr_pc = curr_state.EX["PC"] + imm
+        #         reset_state(state)
+        #         state.IF["PC"] = curr_pc
+        #     else:
+        #         state.IF["PC"] = curr_state.IF["PC"] + 4
+        # elif alucontrol == "001":
+        #     print("BNE")
+        #     if op1 != op2:
+        #         imm = [
+        #             (int(curr_state.EX["Imm"], 2) << 1),
+        #             (int(twos_comp_str(curr_state.EX["Imm"]), 2) << 1) * -1
+        #         ][curr_state.EX["Imm"][0] == '1']
+        #         curr_pc = curr_state.EX["PC"] + imm
+        #         reset_state(state)
+        #         state.IF["PC"] = curr_pc
+        #     else:
+        #         state.IF["PC"] = curr_state.IF["PC"] + 4
+        # elif curr_state.EX["jump"]:
+        #     print("JAL")
+        #     state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(curr_state.IF["PC"] + 4))
+        #     imm = [
+        #         (int(curr_state.EX["Imm"], 2) << 1),
+        #         (int(twos_comp_str(curr_state.EX["Imm"]), 2) << 1) * -1
+        #     ][curr_state.EX["Imm"][0] == '1']
+        #     state.IF["PC"] = curr_state.EX["PC"] + imm
 
 
 def instruction_mem(state, RdDMem, WrDMem, memory, ALUresult, DestReg, WBEnable, register):
