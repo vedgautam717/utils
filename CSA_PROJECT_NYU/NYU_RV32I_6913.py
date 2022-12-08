@@ -272,7 +272,7 @@ class FiveStageCore(Core):
         
         #*****************imp change******************
         # halt reset if branching or jump
-        if self.nextState.EX["halt"] == True and (self.state.ID["PC"] > self.state.IF["PC"] or self.state.IF["PC"]  + 4 < self.state.IF["PC"]):
+        if self.nextState.EX["halt"] == True and (self.state.ID["PC"] > self.state.IF["PC"] or self.state.ID["PC"]  + 4 < self.state.IF["PC"]):
             self.nextState.EX["halt"] = False
             self.nextState.ID["halt"] = False
             self.nextState.IF["halt"] = False
@@ -343,14 +343,14 @@ if __name__ == "__main__":
     count = 0
     while True:
         # print('-------------------------------------')
-        # if not ssCore.halted:
-        #     ssCore.step()
-        # if ssCore.halted:
-        #     break
-        if not fsCore.halted:
-            fsCore.step()
-        if fsCore.halted:
+        if not ssCore.halted:
+            ssCore.step()
+        if ssCore.halted:
             break
+        # if not fsCore.halted:
+        #     fsCore.step()
+        # if fsCore.halted:
+        #     break
         # if ssCore.halted and fsCore.halted:
         #     break
     # dump SS and FS data mem.
