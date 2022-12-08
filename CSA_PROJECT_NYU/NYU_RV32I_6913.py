@@ -157,7 +157,7 @@ class SingleStageCore(Core):
                 self.state.EX["mux_out1"],
                 self.state.EX["mux_out2"],
                 self.state.EX["DestReg"],
-                self.nextState,
+                self.state,
             )
 
         # --------------------- MEM stage ---------------------
@@ -166,7 +166,8 @@ class SingleStageCore(Core):
             self.state.WB["halt"] = True
         else:
             instruction_mem(
-                self.state, self.state.MEM["RdDMem"],
+                self.state,
+                self.state.MEM["RdDMem"],
                 self.state.MEM["WrDMem"],
                 self.ext_dmem,
                 self.state.MEM["ALUresult"],
@@ -183,9 +184,12 @@ class SingleStageCore(Core):
             write_nack(self.state.WB["DestReg"], self.state.WB["Wrt_data"], self.state.WB["wrt_enable"], self.myRF)
 
         self.myRF.outputRF(self.cycle) # dump RF
-        self.printState(self.nextState, self.cycle) # print states after executing cycle 0, cycle 1, cycle 2 ...
+        self.printState(self.state, self.cycle) # print states after executing cycle 0, cycle 1, cycle 2 ...
 
-        self.state = self.nextState #The end of the cycle and updates the current state with the values calculated in this cycle
+        # self.state = self.nextState #The end of the cycle and updates the current state with the values calculated in this cycle
+        
+        self.nextState.IF["PC"] = self.state.IF["PC"]
+        self.state = self.nextState
         self.nextState = State()
         self.cycle += 1
 
@@ -329,12 +333,14 @@ if __name__ == "__main__":
         # print('-------------------------------------')
         if not ssCore.halted:
             ssCore.step()
-        if not fsCore.halted:
-            fsCore.step()
-        # if ssCore.halted:
-        #     break
-        if ssCore.halted and fsCore.halted:
+        if ssCore.halted:
             break
+        # if not fsCore.halted:
+        #     fsCore.step()
+        # if fsCore.halted:
+        #     break
+        # if ssCore.halted and fsCore.halted:
+        #     break
     # dump SS and FS data mem.
     print(dmem_fs.DMem)
     dmem_ss.outputDataMem()
