@@ -135,3 +135,6 @@ dmypy.json
 .idea/
 docs/helperdoc.md
 .vscode
+
+# remove txt
+*.txt
