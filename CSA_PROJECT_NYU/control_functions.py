@@ -247,10 +247,10 @@ def instruction_decode(s, state, register_file, memory):
         state.IF["halt"] = True
 
 
-def instruction_exec(state, alucontrol, op1, op2, DestReg, nextState):
+def instruction_exec(state, alucontrol, op1, op2, DestReg, curr_state):
     # print(op1,op2)
     state.MEM["DestReg"] = DestReg
-    if not state.EX['branch']:
+    if not curr_state.EX['branch']:
         if alucontrol == "0110":
             print("SUB")
             state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(op1,2) + int(twos_comp_str(op2), 2)))
@@ -280,38 +280,40 @@ def instruction_exec(state, alucontrol, op1, op2, DestReg, nextState):
         elif alucontrol == "0011":
             print("XOR")
             state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(int(op1,2) ^ int(op2,2)))
-        nextState.IF["PC"] = state.IF["PC"] + 4
+        state.IF["PC"] = curr_state.IF["PC"] + 4
     else:
         if alucontrol == "000":
             print("BEQ")
             if op1 == op2:
                 imm = [
-                    (int(state.EX["Imm"], 2) << 1),
-                    (int(twos_comp_str(state.EX["Imm"]), 2) << 1) * -1
-                ][state.EX["Imm"][0] == '1']
-                nextState.IF["PC"] = state.IF["PC"] + imm
+                    (int(curr_state.EX["Imm"], 2) << 1),
+                    (int(twos_comp_str(curr_state.EX["Imm"]), 2) << 1) * -1
+                ][curr_state.EX["Imm"][0] == '1']
+                curr_pc = curr_state.IF["PC"] + imm
                 reset_state(state)
+                state.IF["PC"] = curr_pc
             else:
-                nextState.IF["PC"] = state.IF["PC"] + 4
+                state.IF["PC"] = curr_state.IF["PC"] + 4
         elif alucontrol == "001":
             print("BNE")
             if op1 != op2:
                 imm = [
-                    (int(state.EX["Imm"], 2) << 1),
-                    (int(twos_comp_str(state.EX["Imm"]), 2) << 1) * -1
-                ][state.EX["Imm"][0] == '1']
-                nextState.IF["PC"] = state.IF["PC"] + imm
+                    (int(curr_state.EX["Imm"], 2) << 1),
+                    (int(twos_comp_str(curr_state.EX["Imm"]), 2) << 1) * -1
+                ][curr_state.EX["Imm"][0] == '1']
+                curr_pc = curr_state.IF["PC"] + imm
                 reset_state(state)
+                state.IF["PC"] = curr_pc
             else:
-                nextState.IF["PC"] = state.IF["PC"] + 4
-        elif state.EX["jump"]:
+                state.IF["PC"] = curr_state.IF["PC"] + 4
+        elif curr_state.EX["jump"]:
             print("JAL")
-            state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(state.IF["PC"] + 4))
+            state.MEM["ALUresult"] = generate_bitstring('{:032b}'.format(curr_state.IF["PC"] + 4))
             imm = [
-                (int(state.EX["Imm"], 2) << 1),
-                (int(twos_comp_str(state.EX["Imm"]), 2) << 1) * -1
-            ][state.EX["Imm"][0] == '1']
-            nextState.IF["PC"] = state.IF["PC"] + imm
+                (int(curr_state.EX["Imm"], 2) << 1),
+                (int(twos_comp_str(curr_state.EX["Imm"]), 2) << 1) * -1
+            ][curr_state.EX["Imm"][0] == '1']
+            state.IF["PC"] = curr_state.IF["PC"] + imm
 
 
 def instruction_mem(state, RdDMem, WrDMem, memory, ALUresult, DestReg, WBEnable, register):
